@@ -16,16 +16,12 @@
 ;;   * Press <space> to rotate the board.
 ;;
 
-#lang racket
+#lang whalesong
 
-(require rackunit
-         2htdp/image
-         (rename-in 2htdp/universe
-                    [left left-arrow]
-                    [right right-arrow]
-                    [up up-arrow]
-                    [down down-arrow]))
-
+(require whalesong/image
+         whalesong/world
+         whalesong/lang/match
+         whalesong/lang/for)
 
 (define *side* 4)              ; Side-length of the grid
 (define *time-limit* #f)       ; Use #f for no time limit, or number of seconds
@@ -299,8 +295,26 @@
 ;;        0 0 0 0)
 ;;
 (define (initial-state [side *side*])
-  (shuffle (append (list (new-tile) (new-tile))
-                   (make-list (- (sqr side) 2) 0))))
+  (define num-tiles (sqr side))
+  (replace-nth-zero
+   (replace-nth-zero
+    (make-list num-tiles 0)
+    (random num-tiles) (new-tile))
+   (random (sub1 num-tiles)) (new-tile)))
+;  (define num-blanks (- (sqr side) 2))
+;  (define num-blanks1
+;    (random (add1 num-blanks)))
+;  (define num-blanks2
+;    (if (zero? (- num-blanks num-blanks1)) 0
+;        (random (add1 (- num-blanks num-blanks1)))))
+;  (define num-blanks3
+;    (if (zero? (- num-blanks num-blanks1 num-blanks2)) 0
+;        (random (add1 (- num-blanks num-blanks1 num-blanks2)))))
+;  (append (make-list num-blanks1 0)
+;          (list (new-tile))
+;          (make-list num-blanks2 0)
+;          (list (new-tile))
+;          (make-list num-blanks3 0)))
 
 ;; The game finishes when no matter which way you slide, the board doesn't
 ;; change.
@@ -322,7 +336,19 @@
 
 ;; Memoization - caching images takes the strain off the gc
 ;;
-(define-syntax define-memoized
+;; whalesong supports define-syntax-rule (without ellipses)
+;; but not syntax-rules?
+(define-syntax-rule (define-memoized (f arg) body)
+  (define f
+    (let ([results (make-hash)])
+      (lambda (arg)
+        ((λ vals
+           (when (not (hash-has-key? results vals))
+             (hash-set! results vals body))
+           (hash-ref results vals))
+         arg)))))
+
+#;(define-syntax define-memoized
   (syntax-rules ()
     [(_ (f args ...) bodies ...)
      (define f
@@ -612,193 +638,6 @@
             (on-key change)
             (on-tick advance-frame 0.01)
             (stop-when game-over? show-world)
-            (name "2048 - Racket edition")))
-
-;; 
-;; TESTS
-;;
-(module+ test
-  (set-side! 4)
-  
-  (check-equal? (slide-left '(0 0 0 0)) '(0 0 0 0))
-  (check-equal? (slide-left '(1 2 3 4)) '(1 2 3 4))
-  (check-equal? (slide-left '(2 0 4 0)) '(2 4 0 0))
-  (check-equal? (slide-left '(0 0 2 4)) '(2 4 0 0))
-  (check-equal? (slide-left '(2 0 2 0)) '(4 0 0 0))
-  (check-equal? (slide-left '(0 8 8 0)) '(16 0 0 0))
-  (check-equal? (slide-left '(4 4 8 8)) '(8 16 0 0))
-  (check-equal? (slide-right '(4 4 8 8)) '(0 0 8 16))
-  (check-equal? (slide-right '(4 4 4 0)) '(0 0 4 8))
-  
-  (check-equal? (moves-row-left '(0 0 0 0)) '())
-  (check-equal? (moves-row-left '(1 2 3 4)) 
-                '((1 0 0)
-                  (2 1 1)
-                  (3 2 2)
-                  (4 3 3)))
-  
-  (check-equal? (moves-row-left '(2 0 4 0)) '((2 0 0)
-                                              (4 2 1)))
-  
-  (check-equal? (moves-row-right '(2 0 4 0)) '((4 2 3)
-                                               (2 0 2)))
-  
-  (check-equal? (moves-row-left '(0 0 2 4)) '((2 2 0)
-                                              (4 3 1)))
-  
-  (check-equal? (moves-row-left '(2 0 2 0)) '((2 0 0)
-                                              (2 2 0)))
-  
-  (check-equal? (moves-row-left '(2 2 2 0)) '((2 0 0)
-                                              (2 1 0)
-                                              (2 2 1)))
-  
-  (check-equal? (moves-row-right '(2 2 2 0)) '((2 2 3)
-                                               (2 1 3)
-                                               (2 0 2)))
-  
-  (check-equal? (moves-row-left '(2 2 4 4)) '((2 0 0)
-                                              (2 1 0)
-                                              (4 2 1)
-                                              (4 3 1)))
-  
-  (check-equal? (moves-row-right '(2 2 4 4)) '((4 3 3)
-                                               (4 2 3)
-                                               (2 1 2)
-                                               (2 0 2)))
-  
-  (check-equal? (add-row-coord 7 '((2 0 0)
-                                   (2 1 0)
-                                   (4 2 1)))
-                '((2 (7 0) (7 0))
-                  (2 (7 1) (7 0))
-                  (4 (7 2) (7 1))))
-  
-  (check-equal? (left '(( 0 8 8 0)
-                        (16 0 0 0)
-                        ( 2 2 4 4)
-                        ( 0 2 2 2)))
-                '((16 0 0 0)
-                  (16 0 0 0)
-                  ( 4 8 0 0)
-                  ( 4 2 0 0)))
-  (check-equal? (right '(( 0 8 8 0)
-                         (16 0 0 0)
-                         ( 2 2 4 4)
-                         ( 0 2 2 2)))
-                '((0 0 0 16)
-                  (0 0 0 16)
-                  (0 0 4  8)
-                  (0 0 2  4)))
-  (check-equal? (up '((0 16 2 0) 
-                      (8  0 2 2) 
-                      (8  0 4 2) 
-                      (0  0 4 2)))
-                '((16 16 4 4) 
-                  (0  0  8 2) 
-                  (0  0  0 0) 
-                  (0  0  0 0)))
-  (check-equal? (down '((0 16 2 0) 
-                        (8  0 2 2) 
-                        (8  0 4 2) 
-                        (0  0 4 2)))
-                '((0  0  0 0) 
-                  (0  0  0 0) 
-                  (0  0  4 2) 
-                  (16 16 8 4)))
-  
-  (check-equal? (left '(( 0 8 8 0)
-                        (16 0 0 0)
-                        ( 2 2 4 4)
-                        ( 0 2 2 2)))
-                '((16 0 0 0)
-                  (16 0 0 0)
-                  ( 4 8 0 0)
-                  ( 4 2 0 0)))
-  
-  (check-equal? (moves-grid-left '(( 0 8 8 0)
-                                   (16 0 0 0)
-                                   ( 2 2 4 4)
-                                   ( 0 2 2 2)))
-                '((8  (0 1) (0 0))
-                  (8  (0 2) (0 0))
-                  (16 (1 0) (1 0))
-                  (2  (2 0) (2 0))
-                  (2  (2 1) (2 0))
-                  (4  (2 2) (2 1))
-                  (4  (2 3) (2 1))
-                  (2  (3 1) (3 0))
-                  (2  (3 2) (3 0))
-                  (2  (3 3) (3 1))))
-  
-  (check-equal? (moves-grid-right '(( 0 8 8 0)
-                                    (16 0 0 0)
-                                    ( 2 2 4 4)
-                                    ( 0 2 2 2)))
-                '((8  (0 2) (0 3))
-                  (8  (0 1) (0 3))
-                  (16 (1 0) (1 3))
-                  (4  (2 3) (2 3))
-                  (4  (2 2) (2 3))
-                  (2  (2 1) (2 2))
-                  (2  (2 0) (2 2))
-                  (2  (3 3) (3 3))
-                  (2  (3 2) (3 3))
-                  (2  (3 1) (3 2))))
-  
-  
-  (check-equal? (moves-grid-up '(( 0 8 8 0)
-                                 (16 0 0 0)
-                                 ( 2 2 4 4)
-                                 ( 0 2 2 2)))
-                '((16 (1 0) (0 0))
-                  (2  (2 0) (1 0))
-                  (8  (0 1) (0 1))
-                  (2  (2 1) (1 1))
-                  (2  (3 1) (1 1))
-                  (8  (0 2) (0 2))
-                  (4  (2 2) (1 2))
-                  (2  (3 2) (2 2))
-                  (4  (2 3) (0 3))
-                  (2  (3 3) (1 3))))
-  
-  (check-equal? (moves-grid-down '(( 0 8 8 0)
-                                   (16 0 0 0)
-                                   ( 2 2 4 4)
-                                   ( 0 2 2 2)))
-                '((2  (2 0) (3 0))
-                  (16 (1 0) (2 0))
-                  (2  (3 1) (3 1))
-                  (2  (2 1) (3 1))
-                  (8  (0 1) (2 1))
-                  (2  (3 2) (3 2))
-                  (4  (2 2) (2 2))
-                  (8  (0 2) (1 2))
-                  (2  (3 3) (3 3))
-                  (4  (2 3) (2 3)))) 
-  
-  (check-equal? (chop '(1 2 3 4 5 6 7 8) 4)
-                '((1 2 3 4) (5 6 7 8)))
-  
-  (check-equal? (length (initial-state 5)) 25)
-  
-  (let* ([initial (initial-state)]
-         [initial-sum (apply + initial)]
-         [largest-3 (take (sort initial >) 3)])
-    (check-equal? (length initial) 16)
-    (check-true (or (= initial-sum 4)
-                    (= initial-sum 6)
-                    (= initial-sum 8)))
-    (check-true (or (equal? largest-3  '(2 2 0))
-                    (equal? largest-3  '(4 2 0))
-                    (equal? largest-3  '(4 4 0)))))
-  
-  (check-equal? (count-zeros '(1 0 1 0 0 0 1)) 4)
-  (check-equal? (count-zeros '(1 1)) 0)
-  (check-equal? (replace-nth-zero '(0 0 0 1 2 0) 2 5)
-                '(0 0 5 1 2 0))
-  
-  (check-true (finished? '(1 2 3 4) 2))
-  (check-false (finished? '(2 2 3 4) 2)))
+            #;(name "2048 - Racket edition")))
 
 (start)
